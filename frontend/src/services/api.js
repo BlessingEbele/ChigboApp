@@ -24,7 +24,19 @@ api.interceptors.request.use(
 export const login = async (username, password) => {
   const response = await api.post('/users/login/', { username, password });
   if (response.data.access) {
+    // Save tokens initially so interceptor can use them for profile fetch
     localStorage.setItem('user', JSON.stringify(response.data));
+    
+    try {
+      // Fetch full profile data
+      const profile = await api.get('/users/profile/');
+      const fullUser = { ...response.data, ...profile.data };
+      localStorage.setItem('user', JSON.stringify(fullUser));
+      return fullUser;
+    } catch (e) {
+      console.error("Failed to fetch full profile");
+      return response.data;
+    }
   }
   return response.data;
 };
@@ -35,6 +47,11 @@ export const logout = () => {
 
 export const register = (userData) => {
   return api.post('/users/register/', userData);
+};
+
+export const synthesizeAudio = async (text, language) => {
+  const response = await api.post('/ai/tts/', { text, language }, { responseType: 'blob' });
+  return window.URL.createObjectURL(new Blob([response.data], { type: 'audio/mpeg' }));
 };
 
 export default api;
