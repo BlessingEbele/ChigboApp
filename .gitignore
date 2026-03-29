@@ -1,0 +1,16 @@
+# Virtual Environments
+venv/
+env/
+.env
+.venv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.sqlite3
+
+# Node/React
+node_modules/
+dist/
+.npm
