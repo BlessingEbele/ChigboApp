@@ -4,3 +4,4 @@ class ChatRequestSerializer(serializers.Serializer):
     message = serializers.CharField(required=True)
     level = serializers.IntegerField(default=0)
     language = serializers.CharField(default="Igbo")
+    native_language = serializers.CharField(default="en")

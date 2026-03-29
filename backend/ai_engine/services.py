@@ -14,14 +14,18 @@ class AIService:
         else:
             self.client = None
 
-    def get_chat_response(self, message, level=0, language="Igbo"):
+    def get_chat_response(self, message, level=0, language="Igbo", native_language="en"):
         """
         Sends the user message to the AI Tutor and retrieves the response.
         """
         if not self.client:
             return {"error": "API Key not configured properly."}
             
-        prompt = f"Act as a professional {language} language teacher teaching a beginner (Level {level}). Use simple words, give pronunciation hints, and provide examples. Correct mistakes gently and explain clearly.\n\nUser: {message}"
+        # Dynamically inject the user's native language to translate explanations
+        native_lang_map = {'zh-hans': 'Mandarin Chinese', 'en': 'English', 'ig': 'Igbo'}
+        teaching_lang = native_lang_map.get(native_language, 'English')
+            
+        prompt = f"Act as a professional {language} language teacher teaching a beginner (Level {level}). Your student speaks {teaching_lang}. You MUST explain all rules, grammar, and pronunciation in {teaching_lang}. Correct mistakes gently.\n\nUser: {message}"
         try:
             response = self.client.models.generate_content(
                 model='gemini-2.5-flash',
