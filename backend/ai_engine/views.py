@@ -4,6 +4,7 @@ from django.http import HttpResponse
 import subprocess
 import tempfile
 import os
+import azure.cognitiveservices.speech as speechsdk
 from rest_framework import status, permissions
 from .serializers import ChatRequestSerializer
 from .services import AIService
@@ -42,36 +43,37 @@ class SpeechSynthesisView(APIView):
             return Response({"error": "No text provided to synthesize."}, status=status.HTTP_400_BAD_REQUEST)
             
         try:
-            # Microsoft Edge's free TTS does not expose the raw 'ig-NG' Igbo voice tag
-            # Nigerian English sounded "totally wrong" because of English phonics.
-            # We are falling back to Swahili (sw-KE-ZuriNeural), which shares very similar 
-            # Niger-Congo/Bantu phonetic and vowel structures, resulting in a much closer pronunciation.
-            voice = 'sw-KE-ZuriNeural' 
+            speech_key = os.environ.get('AZURE_SPEECH_KEY')
+            speech_region = os.environ.get('AZURE_SPEECH_REGION')
+            
+            if not speech_key or not speech_region or speech_key == "your_key_here":
+                return Response({"error": "Azure Speech credentials not configured."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+            speech_config = speechsdk.SpeechConfig(subscription=speech_key, region=speech_region)
+
+            voice = 'ig-NG-EzinneNeural' 
             
             if language == 'zh-CN':
                 voice = 'zh-CN-XiaoxiaoNeural'
             elif language == 'en':
                 voice = 'en-US-AriaNeural'
                 
-            with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as tmp:
-                tmp_path = tmp.name
-                
-            # Run edge-tts synchronous CLI 
-            process = subprocess.run(
-                ['edge-tts', '--voice', voice, '--text', text, '--write-media', tmp_path],
-                capture_output=True, check=True
-            )
+            speech_config.speech_synthesis_voice_name = voice
+            speech_config.set_speech_synthesis_output_format(speechsdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3)
             
-            with open(tmp_path, 'rb') as f:
-                audio_data = f.read()
-                
-            os.remove(tmp_path)
+            # Use None to avoid playing audio on the server directly
+            speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
             
-            response = HttpResponse(audio_data, content_type='audio/mpeg')
-            response['Content-Disposition'] = f'attachment; filename="pronunciation.mp3"'
-            return response
+            result = speech_synthesizer.speak_text_async(text).get()
             
-        except subprocess.CalledProcessError as e:
-            return Response({"error": f"TTS Engine failed: {e.stderr.decode()}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+                response = HttpResponse(result.audio_data, content_type='audio/mpeg')
+                response['Content-Disposition'] = 'attachment; filename="pronunciation.mp3"'
+                return response
+            elif result.reason == speechsdk.ResultReason.Canceled:
+                cancellation_details = result.cancellation_details
+                return Response({"error": f"Speech synthesis canceled: {cancellation_details.reason}. Details: {cancellation_details.error_details}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            return Response({"error": "Unknown synthesis error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
