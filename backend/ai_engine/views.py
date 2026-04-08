@@ -72,6 +72,15 @@ class SpeechSynthesisView(APIView):
                 return response
             elif result.reason == speechsdk.ResultReason.Canceled:
                 cancellation_details = result.cancellation_details
+                if cancellation_details.reason == speechsdk.CancellationReason.Error and "Unsupported voice" in cancellation_details.error_details:
+                    # Fall back to Swahili if the current Azure region hasn't deployed the Igbo voice yet
+                    speech_config.speech_synthesis_voice_name = 'sw-KE-ZuriNeural'
+                    speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=None)
+                    fallback_result = speech_synthesizer.speak_text_async(text).get()
+                    if fallback_result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+                        response = HttpResponse(fallback_result.audio_data, content_type='audio/mpeg')
+                        response['Content-Disposition'] = 'attachment; filename="pronunciation.mp3"'
+                        return response
                 return Response({"error": f"Speech synthesis canceled: {cancellation_details.reason}. Details: {cancellation_details.error_details}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             return Response({"error": "Unknown synthesis error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
